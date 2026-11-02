@@ -1,48 +1,74 @@
 <?php
-// Notice aur warning hatane ke liye ye line sabse upar likho
-error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
-
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING & ~E_DEPRECATED);
 include('db.php');
 
-if(!isset($_SESSION['user_id'])) { 
+if (!isset($_SESSION['user_id'])) { 
     header("Location: login.php"); 
     exit(); 
 }
 
 $u_id = $_SESSION['user_id'];
 
-// 2. Checkout Form se data nikalna
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $c_name = mysqli_real_escape_string($conn, $_POST['name']);
-    $c_phone = mysqli_real_escape_string($conn, $_POST['phone']);
-    $c_address = mysqli_real_escape_string($conn, $_POST['address']);
-    $total_bill = $_POST['total_amount']; 
+    $c_name = mysqli_real_escape_string($conn, $_POST['name'] ?? '');
+    $c_phone = mysqli_real_escape_string($conn, $_POST['phone'] ?? '');
+    $c_address = mysqli_real_escape_string($conn, $_POST['address'] ?? '');
+    $total_bill = mysqli_real_escape_string($conn, $_POST['total_amount'] ?? '0');
+    
+    $direct_p_id = intval($_POST['product_id'] ?? ($_GET['id'] ?? ($_SESSION['checkout_product_id'] ?? 0)));
+    unset($_SESSION['checkout_product_id']);
 } else {
     header("Location: index.php");
     exit();
 }
 
-// 3. LOGIC START: Database mein save karna
-$cart_items = mysqli_query($conn, "SELECT * FROM cart WHERE user_id = '$u_id'");
-
-if($cart_items && mysqli_num_rows($cart_items) > 0) {
-    while($item = mysqli_fetch_assoc($cart_items)) {
-        $p_name = mysqli_real_escape_string($conn, $item['product_name']);
-        
-        // Database mein data save karna
-        $order_query = "INSERT INTO orders (user_id, customer_name, phone, address, product_name, total_amount, status) 
-                        VALUES ('$u_id', '$c_name', '$c_phone', '$c_address', '$p_name', '$total_bill', 'Pending')";
-        
-        mysqli_query($conn, $order_query);
+if ($direct_p_id > 0) {
+    $p_res = mysqli_query($conn, "SELECT * FROM products WHERE id = $direct_p_id");
+    if (!$p_res) {
+        die(mysqli_error($conn));
     }
     
-    // Cart khali karna
-    mysqli_query($conn, "DELETE FROM cart WHERE user_id = '$u_id'");
+    $p_row = mysqli_fetch_assoc($p_res);
+    $p_name = mysqli_real_escape_string($conn, $p_row['item_name'] ?? ($p_row['product_name'] ?? ($p_row['name'] ?? 'Product')));
+
+    $order_query = "INSERT INTO orders (user_id, customer_name, phone, address, product_name, total_amount, status) 
+                    VALUES ('$u_id', '$c_name', '$c_phone', '$c_address', '$p_name', '$total_bill', 'Pending')";
+    
+    if (!mysqli_query($conn, $order_query)) {
+        die(mysqli_error($conn));
+    }
+} else {
+    $cart_query = mysqli_query($conn, "SELECT * FROM cart WHERE user_id = '$u_id'");
+    if (!$cart_query) {
+        die(mysqli_error($conn));
+    }
+
+    if (mysqli_num_rows($cart_query) > 0) {
+        while ($item = mysqli_fetch_assoc($cart_query)) {
+            $prod_id = intval($item['product_id']);
+            $prod_res = mysqli_query($conn, "SELECT * FROM products WHERE id = $prod_id");
+            $prod_row = $prod_res ? mysqli_fetch_assoc($prod_res) : [];
+            
+            $p_name = mysqli_real_escape_string($conn, $prod_row['item_name'] ?? ($prod_row['product_name'] ?? ($prod_row['name'] ?? 'Cart Product')));
+
+            $order_query = "INSERT INTO orders (user_id, customer_name, phone, address, product_name, total_amount, status) 
+                            VALUES ('$u_id', '$c_name', '$c_phone', '$c_address', '$p_name', '$total_bill', 'Pending')";
+            
+            if (!mysqli_query($conn, $order_query)) {
+                die(mysqli_error($conn));
+            }
+        }
+        mysqli_query($conn, "DELETE FROM cart WHERE user_id = '$u_id'");
+    } else {
+        die("Cart is empty");
+    }
 }
 
-// WhatsApp Links Generate karna
 $wa_msg_owner = "New Order Recieved! Name: $c_name, Address: $c_address, Total: ₹$total_bill.";
-$wa_link_owner = "https://wa.me/919713901851?text=" . urlencode($wa_msg_owner); // Apna Number Yahan Likho
+$wa_link_owner = "https://wa.me/919713901851?text=" . urlencode($wa_msg_owner);
 
 $wa_msg_user = "Hello $c_name, GwaliorStore par aapka order confirm ho gaya hai! Total: ₹$total_bill. Delivery jald hogi.";
 $wa_link_user = "https://wa.me/91$c_phone?text=" . urlencode($wa_msg_user); 

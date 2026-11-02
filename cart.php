@@ -1,8 +1,10 @@
 <?php 
+if (session_status() === PHP_SESSION_NONE) { 
+    session_start(); 
+}
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 include('db.php'); 
-
 
 if(!isset($_SESSION['user_id'])) { 
     header("Location: login.php"); 
@@ -34,8 +36,7 @@ $u_id = $_SESSION['user_id'];
 <div id="cart-list" style="margin-top: 10px;">
     <?php
     $total = 0;
-    // CORRECTION: Yahan c.* ke jagah humne p.product_name aur p.price liya hai
-    $sql = "SELECT c.quantity, p.product_name, p.product_price, p.product_image 
+    $sql = "SELECT c.quantity, p.* 
             FROM cart c 
             JOIN products p ON c.product_id = p.id 
             WHERE c.user_id = '$u_id'";
@@ -43,18 +44,21 @@ $u_id = $_SESSION['user_id'];
     
     if($res && mysqli_num_rows($res) > 0) {
         while($row = mysqli_fetch_assoc($res)) {
-            // Price Calculation (products table se utha rahe hain)
-            $subtotal = $row['product_price'] * $row['quantity'];
+            $p_name = $row['product_name'] ?? ($row['item_name'] ?? ($row['name'] ?? 'Product'));
+            $p_price = $row['product_price'] ?? ($row['price'] ?? 0);
+            $p_img = !empty($row['product_image']) ? $row['product_image'] : (!empty($row['image']) ? $row['image'] : 'default.jpg');
+            
+            $subtotal = $p_price * $row['quantity'];
             $total += $subtotal;
             
             echo "<div class='cart-item'>";
-            echo "<img src='uploads/".$row['product_image']."' style='width:60px; height:60px; object-fit:cover; border-radius:8px;'>";
-            echo "<div class='item-info'><b>".htmlspecialchars($row['product_name'])."</b><br><small style='color:#888;'>Qty: ".$row['quantity']."</small></div>";
+            echo "<img src='uploads/".$p_img."' style='width:60px; height:60px; object-fit:cover; border-radius:8px;'>";
+            echo "<div class='item-info'><b>".htmlspecialchars($p_name)."</b><br><small style='color:#888;'>Qty: ".$row['quantity']."</small></div>";
             echo "<div class='item-price'>₹".$subtotal."</div>";
             echo "</div>";
         }
     } else {
-        echo "<div style='text-align:center; margin-top:50px;'>Aapka cart khali hai!</div>";
+        echo "<div style='text-align:center; padding:60px 20px; background:white; border-radius:16px; margin:20px; border:1px solid #e2e8f0;'><h2 style='color:#1e293b; margin-bottom:8px;'>Your Cart is Empty</h2><p style='color:#64748b; margin-bottom:20px;'>Looks like you haven\'t added any items yet.</p><a href='index.php' style='background:#2874f0; color:white; padding:10px 25px; border-radius:20px; text-decoration:none; font-weight:bold;'>Explore Products</a></div>";
     }
     ?>
 </div>
